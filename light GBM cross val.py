@@ -1,12 +1,13 @@
 
 import numpy as np
 import pandas as pd
-from load_data import load_data_frames
+from load_data import load_data_frames, features
 import lightgbm as lgb
 from sklearn.metrics import f1_score
 
 from sklearn.model_selection import KFold
-N_SAMPLE = 10000
+#N_SAMPLE = 25000
+N_SAMPLE = 1000
 orders, priors, train, products = load_data_frames(N_SAMPLE)
 
 orders.set_index('order_id', inplace=True, drop=False)
@@ -70,6 +71,8 @@ print('user X product f', len(userXproduct))
 del priors
 
 ### build list of candidate products to reorder, with features ###
+
+
 
 def features(selected_orders, labels_given=False):
     print('build candidate list')
@@ -139,7 +142,6 @@ def features(selected_orders, labels_given=False):
     #print(df.memory_usage())
     return df, labels
 
-
 ### train / test orders ###
 print('cross val:')
 kf = KFold(5, shuffle=True, random_state=42)
@@ -166,6 +168,7 @@ for i_fold, (train_index, test_index) in enumerate( kf.split( selected_orders.in
         'bagging_fraction': 0.95,
         'bagging_freq': 5,
         'verbose': -1
+        #'scale_pos_weight': 5
     }
     ROUNDS = 100
 
@@ -191,7 +194,7 @@ for i_fold, (train_index, test_index) in enumerate( kf.split( selected_orders.in
 
     print('light GBM train :-)')
     bst = lgb.train(params, d_train, ROUNDS)
-    # lgb.plot_importance(bst, figsize=(9,20))
+    #lgb.plot_importance(bst, figsize=(9,20))
     del d_train
 
     ### build candidates list for test ###
@@ -208,10 +211,10 @@ for i_fold, (train_index, test_index) in enumerate( kf.split( selected_orders.in
 
     TRESHOLD = 0.22
     f1 = f1_score(y_test, (y_pred_prob > TRESHOLD).astype(np.int16))
-    print('\n\nF1',f1)
-    res.loc[i_fold,:] = [i_fold, f1]
+    print('\n\nF1', f1)
+    res.loc[i_fold, :] = [i_fold, f1]
 
-df_prediction.to_csv('../tmp/prediction_LIGHT_GBM.csv', index=False)
+df_prediction.to_csv('../tmp/prediction_LIGHT_GBM_scale_pos_weight.csv', index=False)
 print(res)
 
 #d = dict()
