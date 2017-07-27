@@ -4,8 +4,6 @@ import pickle
 import os
 
 b_create_dt = False
-#dt = DataSet(1000)
-#dt.features(True)
 N_SAMPLE = 20000
 
 
@@ -16,7 +14,6 @@ if not os.path.isfile("./pckl/dt.p") or b_create_dt:
 else:
     dt = pickle.load(open("./pckl/dt.p", "rb"))
 
-
 f_to_use = ['user_total_orders', 'user_total_items', 'total_distinct_items',
                     'user_average_days_between_orders', 'user_average_basket',
                     'order_hour_of_day', 'days_since_prior_order', 'days_since_ratio',
@@ -24,7 +21,6 @@ f_to_use = ['user_total_orders', 'user_total_items', 'total_distinct_items',
                     'product_reorder_rate', 'UP_orders', 'UP_orders_ratio',
                     'UP_average_pos_in_cart', 'UP_reorder_rate', 'UP_orders_since_last',
                     'UP_delta_hour_vs_last']
-
 
 def lgb_predict(X_train, y_train, X_test):
     params = {

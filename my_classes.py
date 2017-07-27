@@ -10,11 +10,13 @@ class DataSet:
     users, userXproduct
     """
 
-    def __init__(self, SAMPLE_SIZE_USERS=None):
+    def __init__(self, SAMPLE_SIZE_USERS=None, ARR_ORDERS_ID=None):
         """
         :param SAMPLE_SIZE_USERS: - number of user for random sampling. Default is None, for all users.
         """
-        self.orders, self.priors, self.train, self.products = self.load_data_frames(SAMPLE_SIZE_USERS)
+        self.orders, self.priors, self.train, self.products = \
+            self.load_data_frames(SAMPLE_SIZE_USERS, ARR_ORDERS_ID)
+
         self.selected_orders = self.set_selected_orders()
         self.users = self.set_user()
         self.userXproduct = self.set_user_x_products()
@@ -22,7 +24,7 @@ class DataSet:
 
         assert len(set(self.orders[self.orders.eval_set == 'train'].user_id) - set(self.orders.user_id)) == 0
 
-    def load_data_frames(self, SAMPLE_SIZE_USERS=None):
+    def load_data_frames(self, SAMPLE_SIZE_USERS=None, ARR_ORDERS_ID=None):
         IDIR = '../data/'
         print('loading orders')
         # order_id, user_id, eval_set, order_number, order_dow, order_hour_of_day, days_since_prior_order
@@ -65,8 +67,9 @@ class DataSet:
 
         np.random.seed(42)
         users_train = orders[orders.eval_set == 'train'].user_id.values
-
-        if SAMPLE_SIZE_USERS is None:
+        if ARR_ORDERS_ID is not None:
+            user_sample = ARR_ORDERS_ID
+        elif SAMPLE_SIZE_USERS is None:
             user_sample = users_train
         else:
             user_sample = np.random.choice(users_train, size=SAMPLE_SIZE_USERS, replace=False)

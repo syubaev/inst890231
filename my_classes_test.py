@@ -18,6 +18,20 @@ class TestDataSet(unittest.TestCase):
             dt = pickle.load(open("./pckl/dt_test.p", "rb"))
         self.dt = dt
 
+    def test_init_from_nb_of_sample(self):
+        sample_nb = 93
+        dt = DataSet(sample_nb)
+        self.assertEqual(dt.users.shape[0], sample_nb)
+        self.assertEqual( len(dt.orders.user_id.unique()), sample_nb)
+
+    def test_init_from_array(self):
+        users_id = [144288, 145552, 152713, 153941, 158231]
+
+        dt = DataSet(ARR_ORDERS_ID = users_id)
+        self.assertTrue(set(dt.orders.user_id) == set(users_id))
+        self.assertTrue(set(dt.users.index) == set(users_id))
+        self.assertTrue(set(dt.priors.user_id) == set(users_id))
+
     def test_features(self):
         x, y = self.dt.features(True)
         self.assertGreater(np.sum(y), 0, msg = "y conatins less then 1 exapmmle\n y count={}".format(np.sum(y)))
