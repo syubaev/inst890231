@@ -1,19 +1,9 @@
 import lightgbm as lgb
 from my_classes import DataSet, CrossVal
-import pickle
-import os
+import pandas as pd
 
 b_create_dt = False
-N_SAMPLE = 20000
-
-
-
-if not os.path.isfile("./pckl/dt.p") or b_create_dt:
-    dt = DataSet(N_SAMPLE)
-    pickle.dump(dt, open("./pckl/dt.p", "wb"))
-else:
-    dt = pickle.load(open("./pckl/dt.p", "rb"))
-
+#N_SAMPLE = 20000
 f_to_use = ['user_total_orders', 'user_total_items', 'total_distinct_items',
                     'user_average_days_between_orders', 'user_average_basket',
                     'order_hour_of_day', 'days_since_prior_order', 'days_since_ratio',
@@ -45,6 +35,11 @@ def lgb_predict(X_train, y_train, X_test):
     y_pred_prob = bst.predict(X_test)
     return y_pred_prob
 
-cv = CrossVal('lgb_pred')
-res = cv.cross_val_predict(lgb_predict, dt, f_to_use)
-cv.res
+user_by_cluster = pd.read_csv('../tmp/user_by_cluster.csv', index_col='cluster')
+
+for cluster in user_by_cluster.index.unique():
+    user_array = user_by_cluster.loc[cluster, 'user_id'].values
+    dt = DataSet(ARR_ORDERS_ID=user_array)
+    cv = CrossVal('lgb_pred_by_clusters_' + str(cluster))
+    res = cv.cross_val_predict(lgb_predict, dt, f_to_use)
+    print(cv.res)
