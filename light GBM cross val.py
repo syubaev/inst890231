@@ -1,7 +1,7 @@
 
 import numpy as np
 import pandas as pd
-from load_data import load_data_frames, features
+from load_data import load_data_frames
 import lightgbm as lgb
 from sklearn.metrics import f1_score
 

@@ -1,13 +1,21 @@
 import lightgbm as lgb
 from my_classes import DataSet, CrossVal
+import pickle
+import os
 
-dt = DataSet(1000)
-dt.products_reorder().\
-    user_features().\
-    user_x_products()
-dt.features(True)
+b_create_dt = False
+#dt = DataSet(1000)
+#dt.features(True)
+N_SAMPLE = 20000
 
-print(dt.products.shape)
+
+
+if not os.path.isfile("./pckl/dt.p") or b_create_dt:
+    dt = DataSet(N_SAMPLE)
+    pickle.dump(dt, open("./pckl/dt.p", "wb"))
+else:
+    dt = pickle.load(open("./pckl/dt.p", "rb"))
+
 
 f_to_use = ['user_total_orders', 'user_total_items', 'total_distinct_items',
                     'user_average_days_between_orders', 'user_average_basket',
@@ -37,14 +45,10 @@ def lgb_predict(X_train, y_train, X_test):
     d_train = lgb.Dataset(X_train,
                           label=y_train,
                           categorical_feature=['aisle_id', 'department_id'])  # , 'order_hour_of_day', 'dow'
-
-    print('light GBM train :-)')
     bst = lgb.train(params, d_train, ROUNDS)
-
-    print('light GBM predict')
     y_pred_prob = bst.predict(X_test)
     return y_pred_prob
 
 cv = CrossVal('lgb_pred')
 res = cv.cross_val_predict(lgb_predict, dt, f_to_use)
-
+cv.res

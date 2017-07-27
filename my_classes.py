@@ -2,17 +2,24 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import f1_score
 from sklearn.model_selection import KFold
-from typing import List
+
 
 class DataSet:
-    """Class to maintenance data loading and features calculation """
+    """Class to maintenance data loading and features calculation
+    orders, priors, train, products, selected_orders,
+    users, userXproduct
+    """
 
     def __init__(self, SAMPLE_SIZE_USERS=None):
         """
         :param SAMPLE_SIZE_USERS: - number of user for random sampling. Default is None, for all users.
         """
         self.orders, self.priors, self.train, self.products = self.load_data_frames(SAMPLE_SIZE_USERS)
-        self.selected_orders = self.orders[self.orders.eval_set == 'train']
+        self.selected_orders = self.set_selected_orders()
+        self.users = self.set_user()
+        self.userXproduct = self.set_user_x_products()
+        self.products = self.set_products_reorder()
+
         assert len(set(self.orders[self.orders.eval_set == 'train'].user_id) - set(self.orders.user_id)) == 0
 
     def load_data_frames(self, SAMPLE_SIZE_USERS=None):
@@ -83,8 +90,14 @@ class DataSet:
 
         orders.set_index('order_id', inplace=True, drop=False)
         return orders, priors, train, products
-        ###
-    def products_reorder(self):
+
+    def set_products_reorder(self):
+        """
+        :return: products с доп фичами:
+            orders - кол-во заказов продукта в прошлом
+            reorders - кол-во раз когда продукт перезаказывали
+            reorder_rate - отношение перезаказов к заказам продуката
+        """
         # кол-во заказов по продуктам
         priors = self.priors
         products = self.products
@@ -96,10 +109,19 @@ class DataSet:
         prods['reorder_rate'] = (prods.reorders / prods.orders).astype(np.float32)
         products = products.join(prods, on='product_id')
         products.set_index('product_id', drop=False, inplace=True)
-        self.products = products
-        return self
+        return products
 
-    def user_features(self):
+    def set_user(self):
+        """
+
+        :return: создает df users с фичами:
+            average_days_between_orders - среднее кол-во дней между заказами
+            nb_orders - кол-во заказов
+            total_items : int - общее кол-во позиций
+            all_products : set - сет продкутов купелый юзером
+            total_distinct_items : int - кол-во уникальных продуктов
+            average_basket : int - средний размер корзины
+        """
         orders, priors = self.orders, self.priors
         print('computing user f')
         usr = pd.DataFrame()
@@ -115,10 +137,19 @@ class DataSet:
         users = users.join(usr)
         users['average_basket'] = (users.total_items / users.nb_orders).astype(np.float32)
         print('user f', users.shape)
-        self.users = users
-        return self
+        return users
 
-    def user_x_products(self):
+    def set_user_x_products(self):
+        """
+        :return: add userXproduct
+        Вычисляется все комбинации продукт-пользователь;
+        При этом считаются только те пары, которые пользователь покупал.
+        В словарь d записано для каждой пары юзер-продукт:
+            user_product : int - id из пары юзер-продукт
+            nb_orders : int - кол-во заказов продукта,
+            last_order_id : int - ид_последнего заказа,
+            sum_pos_in_cart : int - сумма порядковых номеров добавления продукта в корзину
+        """
         priors = self.priors
         priors['user_product'] = priors.product_id + priors.user_id * 100000
 
@@ -143,15 +174,24 @@ class DataSet:
         userXproduct.last_order_id = userXproduct.last_order_id.map(lambda x: x[1]).astype(np.int32)
         userXproduct.sum_pos_in_cart = userXproduct.sum_pos_in_cart.astype(np.int16)
         print('user X product f', len(userXproduct))
-        self.userXproduct = userXproduct
-        return self
+
+        return userXproduct
+
+    def set_selected_orders(self):
+        return self.orders[self.orders.eval_set == 'train'][['order_id', 'user_id']]
 
     #def features_create(self):
 
     def features(self, labels_given=False):
+        """
+
+        :param labels_given:
+        :return: df : pd.DataFrame, labels : np.array
+        df - содержит в себе
+        """
         users, train, orders, products, userXproduct, selected_orders = \
             self.users, self.train, self.orders, self.products, self.userXproduct, self.selected_orders
-
+        train.set_index(['order_id', 'product_id'], drop=False, inplace=True)
         order_list = []
         product_list = []
         labels = []
@@ -161,7 +201,8 @@ class DataSet:
         # 'order_hour_of_day', 'days_since_prior_order'
         for row in selected_orders.itertuples():
             i += 1
-            if i % 10000 == 0: print('order row', i)
+            if i % 10000 == 0:
+                print('order row', i)
             order_id = row.order_id
             user_id = row.user_id
             user_products = users.all_products[user_id]  # SET из product_id которые заказывл юзер
@@ -176,8 +217,12 @@ class DataSet:
         labels = np.array(labels, dtype=np.int8)
         del order_list, product_list
 
+
         print('user related features')
+        assert orders.index.name == 'order_id'
         df['user_id'] = df.order_id.map(orders.user_id)
+
+        assert users.index.name == 'user_id'
         df['user_total_orders'] = df.user_id.map(users.nb_orders)
         df['user_total_items'] = df.user_id.map(users.total_items)
         df['total_distinct_items'] = df.user_id.map(users.total_distinct_items)
@@ -191,6 +236,8 @@ class DataSet:
         df['days_since_ratio'] = df.days_since_prior_order / df.user_average_days_between_orders
 
         print('product related features')
+
+        assert products.index.name == 'product_id'
         df['aisle_id'] = df.product_id.map(products.aisle_id)
         df['department_id'] = df.product_id.map(products.department_id)
         df['product_orders'] = df.product_id.map(products.orders).astype(np.int32)
@@ -199,8 +246,10 @@ class DataSet:
 
         print('user_X_product related features')
         df['z'] = df.user_id * 100000 + df.product_id
-        #df.drop(['user_id'], axis=1, inplace=True)
+        # df.drop(['user_id'], axis=1, inplace=True)
         df['UP_orders'] = df.z.map(userXproduct.nb_orders)
+        assert np.sum(pd.isnull(df['UP_orders'])) == 0
+
         df['UP_orders_ratio'] = (df.UP_orders / df.user_total_orders).astype(np.float32)
         df['UP_last_order_id'] = df.z.map(userXproduct.last_order_id)
         df['UP_average_pos_in_cart'] = (df.z.map(userXproduct.sum_pos_in_cart) / df.UP_orders).astype(np.float32)
@@ -210,22 +259,16 @@ class DataSet:
                                           df.UP_last_order_id.map(orders.order_hour_of_day)
                                           ). \
             map(lambda x: min(x, 24 - x)).astype(np.int8)
-        # df['UP_same_dow_as_last_order'] = df.UP_last_order_id.map(orders.order_dow) == \
-        #                                              df.order_id.map(orders.order_dow)
 
         df.drop(['UP_last_order_id', 'z'], axis=1, inplace=True)
-        # print(df.dtypes)
-        # print(df.memory_usage())
+
+        print(df.memory_usage())
         return df, labels
 
-class SelectedOrders:
-    def __init__(self, order_id: List, user_id: List):
-        pass
 
 class CrossVal:
     def __init__(self, file_prediction, nb_folds=5):
         self.kf = KFold(nb_folds, shuffle=True, random_state=42)
-        #self.df_prediction = pd.DataFrame(columns=['order_id', 'product_id', 'y_pred', 'y_test'])
         self.res = pd.DataFrame(columns=['fold', 'f1'])
         self.file_prediction = file_prediction
         self.set_prediction()
@@ -234,7 +277,7 @@ class CrossVal:
         self.df_prediction = pd.DataFrame(columns=['order_id', 'product_id', 'y_pred', 'y_test'])
 
     def save_prediction(self):
-        self.df_prediction.to_csv('..tmp/' + self.file_prediction, index=False)
+        self.df_prediction.to_csv('../tmp/' + self.file_prediction + '.csv', index=False)
 
     def cross_val_predict(self, f_prediction, dt: DataSet, f_to_use: list):
         """
@@ -246,18 +289,22 @@ class CrossVal:
         self.set_prediction()
         selected_orders = dt.selected_orders
         X, y = dt.features(labels_given=True)
-        X['y'] = y
+        X.loc[:, 'labels'] = y
+        assert np.sum(y) > 0
         TRESHOLD = 0.22
-        #X.set_index('user_id', inplace=True, drop=False)
+        X.set_index('order_id', inplace=True, drop=False)
         for i_fold, (train_index, test_index) in enumerate(self.kf.split(selected_orders.order_id)):
             train_orders = selected_orders.order_id.iloc[train_index]
             test_orders = selected_orders.order_id.iloc[test_index]
 
             X_train, X_test = X.loc[train_orders], X.loc[test_orders]
-            y_train, y_test = X_train.y, X_test.y
+            y_train, y_test = X_train['labels'], X_test['labels']
 
-            X_train.drop('y', axis=1, inplace=True)
-            X_test.drop('y', axis=1, inplace=True)
+            assert np.sum(y_train) > 0
+
+            print("fold_numb {} .train {} test {} train shape".format(i_fold, np.sum(y_train), np.sum(y_test), len(y_train) ))
+            X_train = X_train.drop('labels', axis=1)
+            X_test = X_test.drop('labels', axis=1)
 
             y_pred_proba = f_prediction(X_train[f_to_use], y_train, X_test[f_to_use])
 
@@ -270,7 +317,7 @@ class CrossVal:
             X_test['y_test'] = y_test
             X_test['y_pred'] = y_pred_proba
 
-            self.res[i_fold, :] = [i_fold, f1]
+            self.res.loc[i_fold, :] = [i_fold, f1]
             self.df_prediction = pd.concat([self.df_prediction,
                                             X_test[['order_id', 'product_id', 'y_pred', 'y_test']]
                                             ])
