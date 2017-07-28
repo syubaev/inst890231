@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
+from numba import jit
 from sklearn.metrics import f1_score
 from sklearn.model_selection import KFold
+import time
 
 
 class DataSet:
@@ -14,14 +16,15 @@ class DataSet:
         """
         :param SAMPLE_SIZE_USERS: - number of user for random sampling. Default is None, for all users.
         """
+        st_time = time.time()
         self.orders, self.priors, self.train, self.products = \
             self.load_data_frames(SAMPLE_SIZE_USERS, ARR_ORDERS_ID)
 
         self.selected_orders = self.set_selected_orders()
         self.users = self.set_user()
-        self.userXproduct = self.set_user_x_products()
+        self.userXproduct = self.set_user_x_products_jit()
         self.products = self.set_products_reorder()
-
+        print('Init time, sec', time.time() - st_time)
         assert len(set(self.orders[self.orders.eval_set == 'train'].user_id) - set(self.orders.user_id)) == 0
 
     def load_data_frames(self, SAMPLE_SIZE_USERS=None, ARR_ORDERS_ID=None):
@@ -131,7 +134,7 @@ class DataSet:
             sum_pos_in_cart : int - сумма порядковых номеров добавления продукта в корзину
         """
         priors = self.priors
-        priors['user_product'] = priors.product_id + priors.user_id * 100000
+        priors['user_product'] = priors.product_id + priors.user_id.astype(np.int64) * 100000
 
         print('compute userXproduct f - this is long...')
 
@@ -153,8 +156,61 @@ class DataSet:
         userXproduct.nb_orders = userXproduct.nb_orders.astype(np.int16)
         userXproduct.last_order_id = userXproduct.last_order_id.map(lambda x: x[1]).astype(np.int32)
         userXproduct.sum_pos_in_cart = userXproduct.sum_pos_in_cart.astype(np.int16)
+        userXproduct.sort_index(inplace=True)
         print('user X product f', len(userXproduct))
 
+        return userXproduct
+
+    def set_user_x_products_jit(self):
+        """
+        :return: add userXproduct
+        Вычисляется все комбинации продукт-пользователь;
+        При этом считаются только те пары, которые пользователь покупал.
+        В словарь d записано для каждой пары юзер-продукт:
+            user_product : int - id из пары юзер-продукт
+            nb_orders : int - кол-во заказов продукта,
+            last_order_id : int - ид_последнего заказа,
+            sum_pos_in_cart : int - сумма порядковых номеров добавления продукта в корзину
+        """
+
+        @jit(nopython=True)
+        def user_product_numb(input_array, out_array):
+            for i in range(input_array.shape[0]):
+                user_prod_ind = input_array[i, 0]
+                order_number = input_array[i, 1]
+                order_id = input_array[i, 2]
+                add_to_cart_order = input_array[i, 3]
+                # modify out
+                out_array[user_prod_ind, 0] += 1
+                prev_order_number = out_array[user_prod_ind, 1]
+                if order_number > prev_order_number:
+                    out_array[user_prod_ind, 1] = order_number
+                    out_array[user_prod_ind, 2] = order_id
+                out_array[user_prod_ind, 3] += add_to_cart_order
+
+        priors = self.priors
+        priors['user_product'] = priors.product_id + priors.user_id.astype(np.int64) * 100000
+        unq = np.unique(priors['user_product'])
+
+        maping_userProduct_ind = dict(zip(unq, np.arange(len(unq))))
+        priors['user_product_ind'] = priors.user_product.map(maping_userProduct_ind)
+
+        input_array = np.asarray(priors[['user_product_ind', 'order_number', 'order_id', 'add_to_cart_order']])
+        out_array = np.zeros((len(unq), 4))
+
+        print('compute userXproduct f - jit')
+
+
+        user_product_numb(input_array, out_array)
+        print('to dataframe (less memory)')
+        userXproduct = pd.DataFrame(out_array)
+        userXproduct.columns = ['nb_orders', 'order_numb', 'last_order_id', 'sum_pos_in_cart']
+        userXproduct['user_product'] = unq
+        userXproduct.set_index('user_product', inplace=True)
+        userXproduct.drop('order_numb', axis=1, inplace=True)
+        userXproduct.nb_orders = userXproduct.nb_orders.astype(np.int16)
+
+        print('user X product f', len(userXproduct))
         return userXproduct
 
     def set_selected_orders(self):
@@ -225,7 +281,7 @@ class DataSet:
         df['product_reorder_rate'] = df.product_id.map(products.reorder_rate)
 
         print('user_X_product related features')
-        df['z'] = df.user_id * 100000 + df.product_id
+        df['z'] = df.user_id.astype(np.int64) * 100000 + df.product_id
         # df.drop(['user_id'], axis=1, inplace=True)
         df['UP_orders'] = df.z.map(userXproduct.nb_orders)
         assert np.sum(pd.isnull(df['UP_orders'])) == 0
@@ -305,3 +361,7 @@ class CrossVal:
         self.save_prediction()
         return self.res
 
+
+class Predict:
+    def __init__(self):
+        pass

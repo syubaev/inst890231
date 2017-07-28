@@ -7,14 +7,13 @@ import os
 import matplotlib.pyplot as plt
 
 
+
 def precision(y_true, y_pred):
     Tp = np.sum((y_pred == 1) & (y_true == 1))
     Fp = np.sum((y_pred == 1) & (y_true == 0))
     x = Tp / (Tp + Fp)
     print('Tp {} Fp {} precision {:.3f}'.format(Tp, Fp, x))
     return x
-
-
 def recall(y_true, y_pred):
     Tp = np.sum((y_pred == 1) & (y_true == 1))
     Fn = np.sum((y_pred == 0) & (y_true == 1))
@@ -22,18 +21,14 @@ def recall(y_true, y_pred):
     print('Tp {} Fn {} recall {:.3f}'.format(Tp, Fn, x))
     return x
 
-
-
-df_lgb = pd.read_csv('../tmp/prediction_LIGHT_GBM.csv', dtype={'order_id':np.int32, 'product_id':np.int32})
+df_lgb = pd.read_csv('../tmp/lgb_pred.csv', dtype={'order_id':np.int32, 'product_id':np.int32})
 df_lgb.set_index(['order_id', 'product_id'], inplace=True)
+
 
 
 df_log_reg = pd.read_csv('../tmp/prediction_LogReg_Item_Item_cluster10.csv', dtype={'order_id':np.int32, 'product_id':np.int32})
 df_log_reg.set_index(['order_id', 'product_id'], inplace=True)
 
-print(
-    'LGB all', f1_score(df_lgb.y_test, df_lgb.y_pred > 0.22)
-)
 
 print(
     'log_reg all', f1_score(df_log_reg.y_test, df_log_reg.y_pred > 0.22)
@@ -84,6 +79,7 @@ m = confusion_matrix(df_lgb.y_test, (df_lgb.y_pred > 0.22).astype(int))
 m = m / np.sum(m)
 sns.heatmap(m, annot=True)
 
+
 print(len(df_lgb.y_test) / np.sum(df_lgb.y_test == 1))
 
 
@@ -102,6 +98,20 @@ print(
     'LGB clust', f1_score(df_lgb_clust.y_test, df_lgb_clust.y_pred > 0.22)
 )
 
-m = confusion_matrix(df_lgb_clust.y_test, (df_lgb_clust.y_pred > 0.22).astype(int))
-m = m / np.sum(m)
-sns.heatmap(m, annot=True)
+
+def plot_confusion(df, title):
+    m = confusion_matrix(df.y_test, (df.y_pred > 0.22).astype(int))
+    m = m / np.sum(m)
+    print('\n' + title)
+    print(m)
+    print('F1', f1_score(df.y_test, df.y_pred > 0.22))
+    plt.figure()
+    sns.heatmap(m, annot=True)
+    plt.title(title)
+    plt.title(title)
+
+plot_confusion(df_lgb, 'LGB')
+plot_confusion(df_lgb_clust, 'LGB Clust')
+
+
+print('LGB all', f1_score(df_lgb.y_test, df_lgb.y_pred > 0.22))

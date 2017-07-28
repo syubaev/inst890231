@@ -1,9 +1,12 @@
 import lightgbm as lgb
 from my_classes import DataSet, CrossVal
 import pandas as pd
+import pickle
+import os
 
-b_create_dt = False
-#N_SAMPLE = 20000
+user_by_cluster = pd.read_csv('../tmp/user_by_cluster.csv', index_col='cluster')
+dt = DataSet(ARR_ORDERS_ID=user_by_cluster.user_id.values)
+
 f_to_use = ['user_total_orders', 'user_total_items', 'total_distinct_items',
                     'user_average_days_between_orders', 'user_average_basket',
                     'order_hour_of_day', 'days_since_prior_order', 'days_since_ratio',
@@ -11,6 +14,7 @@ f_to_use = ['user_total_orders', 'user_total_items', 'total_distinct_items',
                     'product_reorder_rate', 'UP_orders', 'UP_orders_ratio',
                     'UP_average_pos_in_cart', 'UP_reorder_rate', 'UP_orders_since_last',
                     'UP_delta_hour_vs_last']
+
 
 def lgb_predict(X_train, y_train, X_test):
     params = {
@@ -35,12 +39,6 @@ def lgb_predict(X_train, y_train, X_test):
     y_pred_prob = bst.predict(X_test)
     return y_pred_prob
 
-user_by_cluster = pd.read_csv('../tmp/user_by_cluster.csv', index_col='cluster')
-
-for cluster in user_by_cluster.index.unique():
-    print('\n\nCulster N', cluster)
-    user_array = user_by_cluster.loc[cluster, 'user_id'].values
-    dt = DataSet(ARR_ORDERS_ID=user_array)
-    cv = CrossVal('lgb_pred_by_clusters_' + str(cluster))
-    res = cv.cross_val_predict(lgb_predict, dt, f_to_use)
-    print(cv.res)
+cv = CrossVal('lgb_pred')
+res = cv.cross_val_predict(lgb_predict, dt, f_to_use)
+cv.res

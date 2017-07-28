@@ -1,16 +1,38 @@
 import numpy as np
 import pandas as pd
+from numba import jit, guvectorize, int64
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.pipeline import Pipeline
+
 from my_classes import DataSet
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer, TfidfTransformer
 from sklearn.decomposition import TruncatedSVD
 from nltk.cluster.gaac import GAAClusterer
 
 N_COMPONENTS = 200
 N_TAKE_TOP = 15
-N_CLUSTERS = 10
-LAST_N_PRIORS = 4
+N_CLUSTERS = 12
+LAST_N_PRIORS = 5
 
-dt = DataSet(2000)
+dt = DataSet(20000)
+
+class PipClassSVDTakeTop:
+    def __init__(self, n_take_top):
+        self.n_take_top = n_take_top
+
+    def fit(self, X, y):
+        return self
+
+    def transform(self, X, y=None):
+        return X[:, :self.n_take_top]
+
+pipeline = Pipeline([
+    ('vect', CountVectorizer()),
+    ('tfidf', TfidfTransformer()),
+    ('svd', TruncatedSVD(n_components=N_COMPONENTS, n_iter=7, random_state=42)),
+    ('svd_top', PipClassSVDTakeTop(N_TAKE_TOP)),
+    ('cluster', AgglomerativeClustering(n_clusters=N_CLUSTERS, affinity='cosine', linkage='average'))
+])
 
 # USER PRIOR N LAST ORDERS
 
@@ -32,22 +54,20 @@ else:
 user_products = users_prior.all_products.apply(
     lambda x: " ".join([str(prod_id) for prod_id in x]))
 
-print('Calc CountVectorizer')
-user_products_cnt_vector = CountVectorizer().fit_transform(user_products)
-user_products_cnt_vector = (user_products_cnt_vector > 0).astype(np.int8)
+clusters = pipeline.fit_predict(user_products)
 
-# TRY TruncatedSVD
 
-svd = TruncatedSVD(n_components=N_COMPONENTS, n_iter=7, random_state=42)
-
-X_svd = svd.fit_transform(user_products_cnt_vector)
-X_svd = X_svd[:, :N_TAKE_TOP]
-
-#clst = AgglomerativeClustering(n_clusters=N_CLUSTERS, affinity='cosine', linkage='average')
-#clusters = clst.fit_predict(X_C_svd[:40000, :])
-
+ar_clust, ar_cnt = np.unique(clusters, return_counts=True)
+max_clust = np.argmax(ar_cnt)
+for cl, cnt in zip(ar_clust, ar_cnt):
+    if cnt < 500:
+        clusters[clusters == cl] = max_clust
 
 # test the GAAC clusterer with 4 clusters
-clusterer = GAAClusterer(N_CLUSTERS, normalise=False)
-clusters = clusterer.cluster(X_svd, True)
+#clusterer = GAAClusterer(N_CLUSTERS, normalise=False)
+#clusters = clusterer.cluster(X_svd, True)
 pd.DataFrame({'user_id': user_products.index, 'cluster':clusters}).to_csv('../tmp/user_by_cluster.csv', index=False)
+print('Done clustering', np.unique(clusters, return_counts=True))
+
+#
+#(1 / (|A||B|)) * SUMxA SUMyB d(x,y)
